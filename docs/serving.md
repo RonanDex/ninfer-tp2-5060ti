@@ -391,7 +391,17 @@ Function arguments use `response.function_call_arguments.delta` and `.done`. IDs
 and content indices remain stable, and concatenated deltas equal the terminal Item. Responses SSE
 does not emit the Chat Completions `[DONE]` sentinel. With tools enabled, ordinary answer text still
 streams immediately; only an ambiguous `<tool_call>` suffix or the structured tool region is held.
-Malformed tool markup is flushed back as ordinary text without losing bytes.
+In this fork, a malformed line-start `<tool_call>` followed by a function advertised in the
+current request fails with code `tool_call_parse_error` (HTTP 502, `server_error`) instead of
+silently completing as ordinary text. Markdown fenced, indented, inline and blockquoted examples,
+unknown function names, and requests without active tools retain ordinary-text fallback. A plain,
+unquoted XML example calling an active tool is ambiguous and should be fenced explicitly.
+No calls from a malformed response batch are dispatched or repaired. Previously completed turns
+are unaffected. For streaming Chat/Anthropic the existing protocol-shaped SSE error terminates
+the stream without a successful finish frame; Responses emits `response.failed`. Reasoning or
+introductory text may already have streamed, but the buffered malformed call is not flushed.
+Clients should handle this explicit error with a bounded corrective retry and preserve user
+cancellation. `tools/opencode/ninfer-tool-recovery` provides the OpenCode 2.0.16 integration.
 
 ### Local response state and resources
 

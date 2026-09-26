@@ -56,6 +56,17 @@ weight decoding.
 
 ## Build and run
 
+The TP2 fork's active serving parser is `src/serve/tool_call_parser.cpp` (see
+`src/CMakeLists.txt`); the separately retained family parser is not the serving route.
+`ninfer_serve_tool_failure_test` covers valid calls, malformed calls, text examples and streamed
+failure boundaries for that active route. It can also run without CUDA:
+
+```bash
+c++ -std=c++20 -Iinclude -Isrc -Ithird_party tests/test_serve_tool_failure.cpp \
+  src/serve/tool_call_parser.cpp -o /tmp/ninfer-serve-tool-failure-test
+/tmp/ninfer-serve-tool-failure-test
+```
+
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
 cmake --build build --parallel

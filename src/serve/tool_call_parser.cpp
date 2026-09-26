@@ -116,7 +116,66 @@ bool parse_one_tool_call(std::string_view block, std::size_t max_name_length, To
     return true;
 }
 
-ParsedToolCallOutput fallback(const std::string& text) {
+// Only a line-start call to an advertised tool is an executable-intent marker.
+// Fenced/inline examples and unknown tool names remain ordinary answer text.
+bool has_tool_intent(std::string_view text, std::span<const std::string> active_tools) {
+    char fence = 0;
+    std::size_t fence_width = 0;
+    for (std::size_t pos = 0; pos < text.size();) {
+        const std::size_t end = text.find('\n', pos);
+        const auto line = text.substr(pos, end == std::string_view::npos ? text.size() - pos
+                                                                       : end - pos);
+        std::size_t first = 0;
+        while (first < line.size() && (line[first] == ' ' || line[first] == '\t')) { ++first; }
+        const auto trimmed = line.substr(first);
+        std::size_t width = 0;
+        if (!trimmed.empty() && (trimmed.front() == '`' || trimmed.front() == '~')) {
+            while (width < trimmed.size() && trimmed[width] == trimmed.front()) { ++width; }
+        }
+        if (width >= 3) {
+            if (fence == 0) {
+                fence = trimmed.front();
+                fence_width = width;
+            } else if (fence == trimmed.front() && width >= fence_width &&
+                       trim_ascii(trimmed.substr(width)).empty()) {
+                fence = 0;
+            }
+        } else if (fence == 0 && first < 4 && line.substr(0, first).find('\t') ==
+                                               std::string_view::npos &&
+                   trimmed.starts_with("<tool_call>")) {
+            std::size_t function = pos + first + std::string_view("<tool_call>").size();
+            skip_ws(text, function);
+            constexpr std::string_view prefix = "<function=";
+            if (starts_with_at(text, function, prefix)) {
+                const auto begin = function + prefix.size();
+                const auto close = text.find('>', begin);
+                if (close != std::string_view::npos) {
+                    const auto name = text.substr(begin, close - begin);
+                    if (std::find(active_tools.begin(), active_tools.end(), name) !=
+                        active_tools.end()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        if (end == std::string_view::npos) { break; }
+        pos = end + 1;
+    }
+    return false;
+}
+
+ParsedToolCallOutput fallback(const std::string& text,
+                              std::span<const std::string> active_tools = {}) {
+    if (!active_tools.empty() && has_tool_intent(text, active_tools)) {
+        ApiError error;
+        error.status = 502;
+        error.type = "server_error";
+        error.code = "tool_call_parse_error";
+        error.message = "tool_call_parse_error: model output contains an invalid tool call; "
+                        "no tool calls from this response were dispatched. Check prior tool "
+                        "results and retry with a complete, smaller tool call.";
+        throw ApiException(std::move(error));
+    }
     ParsedToolCallOutput out;
     out.content = text;
     return out;
@@ -125,7 +184,8 @@ ParsedToolCallOutput fallback(const std::string& text) {
 } // namespace
 
 ParsedToolCallOutput parse_qwen_tool_call_output(const std::string& text,
-                                                 std::size_t max_tool_name_length) {
+                                                 std::size_t max_tool_name_length,
+                                                 std::span<const std::string> active_tools) {
     constexpr std::string_view kToolOpen  = "<tool_call>";
     constexpr std::string_view kToolClose = "</tool_call>";
 
@@ -139,20 +199,20 @@ ParsedToolCallOutput parse_qwen_tool_call_output(const std::string& text,
     while (pos < text.size()) {
         skip_ws(text, pos);
         if (pos >= text.size()) { break; }
-        if (!starts_with_at(text, pos, kToolOpen)) { return fallback(text); }
+        if (!starts_with_at(text, pos, kToolOpen)) { return fallback(text, active_tools); }
         const std::size_t inner_begin = pos + kToolOpen.size();
         const std::size_t close       = text.find(kToolClose, inner_begin);
-        if (close == std::string::npos) { return fallback(text); }
+        if (close == std::string::npos) { return fallback(text, active_tools); }
         ToolCall call;
         if (!parse_one_tool_call(std::string_view(text).substr(inner_begin, close - inner_begin),
                                  max_tool_name_length, call)) {
-            return fallback(text);
+            return fallback(text, active_tools);
         }
         out.tool_calls.push_back(std::move(call));
         pos = close + kToolClose.size();
     }
 
-    if (out.tool_calls.empty()) { return fallback(text); }
+    if (out.tool_calls.empty()) { return fallback(text, active_tools); }
     out.is_tool_call_response = true;
     return out;
 }

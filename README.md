@@ -1,5 +1,12 @@
 # NInfer
 
+> Personal deployment branch: `RonanDex/ninfer-tp2-5060ti`, based on
+> `lynx-gt/ninfer-tp2-5060ti` at `a7fea2a`. It retains the rank-local DFlash2 penalty-counter
+> and TP2 vision-binding fixes for a non-P2P dual-5060-Ti host, and reports malformed active
+> tool calls as explicit API errors. See [serving behavior](docs/serving.md) and the
+> [bounded OpenCode recovery extension](tools/opencode/ninfer-tool-recovery/README.md).
+> These changes belong to this personal branch; they are not an upstream release.
+
 **English** | [简体中文](README.zh-CN.md)
 
 > Tensor-parallel NInfer on two consumer cards. Qualified on **2× RTX 5060 Ti (16 GiB each)**: one

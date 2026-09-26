@@ -3,6 +3,7 @@
 #include "serve/request.h"
 
 #include <cstddef>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -16,7 +17,8 @@ struct ParsedToolCallOutput {
 };
 
 ParsedToolCallOutput parse_qwen_tool_call_output(const std::string& text,
-                                                 std::size_t max_tool_name_length);
+                                                 std::size_t max_tool_name_length,
+                                                 std::span<const std::string> active_tools = {});
 
 // Incrementally publishes text that is provably outside a possible Qwen
 // <tool_call> suffix. At terminal time, a valid tool response discards the

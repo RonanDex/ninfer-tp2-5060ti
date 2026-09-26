@@ -281,6 +281,9 @@ PreparedRequest GenerationService::prepare(const GenerationRequest& request,
     ninfer::RequestOptions request_options = to_request_options(request, options_);
     prepared.include_usage                 = request.include_usage;
     prepared.tool_capable                  = request.uses_tools() || request.has_tool_history();
+    if (request.uses_tools()) {
+        for (const auto& tool : request.tools) { prepared.active_tool_names.push_back(tool.name); }
+    }
     prepared.tool_name_max_length          = request.tool_name_max_length;
     const ResolvedPromptSemantics semantics =
         resolve_prompt_semantics(request, options_, prompt_capabilities_);
@@ -408,7 +411,8 @@ GenerationOutcome GenerationService::run(PreparedRequest& prepared, const Stream
     bool is_tool_call_response = false;
     if (prepared.tool_capable) {
         ParsedToolCallOutput parsed =
-            parse_qwen_tool_call_output(outcome.text, prepared.tool_name_max_length);
+            parse_qwen_tool_call_output(outcome.text, prepared.tool_name_max_length,
+                                       prepared.active_tool_names);
         outcome.text          = std::move(parsed.content);
         is_tool_call_response = parsed.is_tool_call_response;
         if (is_tool_call_response) { outcome.tool_calls = std::move(parsed.tool_calls); }
