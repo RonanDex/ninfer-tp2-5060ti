@@ -1236,11 +1236,11 @@ void LoadedModelData::build_device_view(const BindingPlan& plan, int device,
     if (plan.features.vision) {
         auto& vision  = runtime.vision.emplace();
         vision.common = qwen3_6::materialize_vision_common(
-            backing, plan.vision_backbone, plan.vision_merger_input, plan.vision_merger_norm);
+            backing, plan.vision_backbone, plan.vision_merger_input, plan.vision_merger_norm, device);
         vision.merger_fc2      = artifact::materialized_weight(backing, plan.vision_merger_fc2,
-                                                               NumericFormat::W8G32_F16S, 5120, 4608);
+                                                               NumericFormat::W8G32_F16S, 5120, 4608, device);
         vision.merger_fc2_bias = artifact::materialized_tensor(backing, plan.vision_merger_fc2_bias,
-                                                               NumericFormat::BF16, {5120});
+                                                               NumericFormat::BF16, {5120}, device);
     }
 }
 

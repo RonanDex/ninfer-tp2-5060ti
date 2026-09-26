@@ -422,6 +422,12 @@ ProgramImplCore::ProgramImplCore(const LoadedModelData& model_in,
             sizeof(qwen3_6::DFlashDecodeIngress));
         *dflash_host_ingress = {};
         *dflash_host_egress  = {};
+        if (peer) {
+            dflash_peer_host.emplace(sizeof(qwen3_6::DFlashDecodeIngress));
+            dflash_peer_host_ingress =
+                static_cast<qwen3_6::DFlashDecodeIngress*>(dflash_peer_host->data());
+            *dflash_peer_host_ingress = {};
+        }
     }
     if (io.dflash_prefill) {
         CUDA_CHECK(cudaMemsetAsync(io.dflash_prefill->produced_count.data, 0,
@@ -463,6 +469,7 @@ ProgramImplCore::ProgramImplCore(const LoadedModelData& model_in,
                                                                        ? &*peer->replay_records
                                                                        : nullptr,
                                                .mtp_host_ingress = mtp_peer_host_ingress,
+                                               .dflash_host_ingress = dflash_peer_host_ingress,
                                                .graph_bridge = graph_bridge ? &*graph_bridge
                                                                             : nullptr});
         if (peer->replay_records.has_value() != replay_records.has_value()) {
@@ -1614,6 +1621,9 @@ void ProgramImplCore::prepare_graphs() {
                 dflash_host_ingress->active_lanes[row]                = static_cast<std::int32_t>(row);
                 dflash_host_ingress->sampling[row]             = {};
             }
+            if (dflash_peer_host_ingress != nullptr) {
+                *dflash_peer_host_ingress = *dflash_host_ingress;
+            }
         }
         if (io.mtp_decode) {
             *mtp_host_ingress          = {};
@@ -1956,6 +1966,17 @@ void ProgramImplCore::publish_peer_mtp_ingress(std::span<const std::uint32_t> la
     *mtp_peer_host_ingress = *mtp_host_ingress;
     for (std::size_t row = 0; row < lanes.size(); ++row) {
         ops::SamplingConfig& sampling = mtp_peer_host_ingress->sampling[row];
+        if (sampling.token_counts == nullptr) { continue; }
+        sampling.token_counts =
+            static_cast<std::int32_t*>(token_counts_lane(peer->token_counts, lanes[row]).data);
+    }
+}
+
+void ProgramImplCore::publish_peer_dflash_ingress(std::span<const std::uint32_t> lanes) {
+    if (dflash_peer_host_ingress == nullptr || dflash_host_ingress == nullptr) { return; }
+    *dflash_peer_host_ingress = *dflash_host_ingress;
+    for (std::size_t row = 0; row < lanes.size(); ++row) {
+        ops::SamplingConfig& sampling = dflash_peer_host_ingress->sampling[row];
         if (sampling.token_counts == nullptr) { continue; }
         sampling.token_counts =
             static_cast<std::int32_t*>(token_counts_lane(peer->token_counts, lanes[row]).data);
@@ -2769,6 +2790,7 @@ ProgramImplCore::decode_dflash_batch(std::span<const std::uint32_t> lanes,
                                     backend_kv_cache() != nullptr ? frontier : 0U);
         }
 
+        publish_peer_dflash_ingress(lanes);
         schedule::DFlashBatchContext schedule_state{{device, model, work, decoder->linear_attention,
                                                      replay_records ? &*replay_records : nullptr,
                                                      io, prefill_hidden, prefill_chunk,

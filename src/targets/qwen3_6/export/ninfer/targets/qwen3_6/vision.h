@@ -99,8 +99,10 @@ struct VisionWeights {
 [[nodiscard]] VisionMergerNormPlan bind_vision_merger_norm(artifact::Binder& binder,
                                                            artifact::TensorPlacement placement);
 
+// Bind every Vision view to the requested materialized device replica.
 [[nodiscard]] VisionCommonWeights materialize_vision_common(
     const artifact::MaterializedArtifact& materialized, const VisionBackbonePlan& backbone,
-    const VisionMergerInputPlan& merger_input, const VisionMergerNormPlan& merger_norm);
+    const VisionMergerInputPlan& merger_input, const VisionMergerNormPlan& merger_norm,
+    int device = 0);
 
 } // namespace ninfer::targets::qwen3_6

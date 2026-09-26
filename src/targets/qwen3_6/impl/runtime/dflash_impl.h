@@ -832,9 +832,13 @@ auto dflash_decode_batch_body(DFlashBatchContext& state, std::int32_t batch_size
             CUDA_CHECK(cudaEventRecord(tp->events->inputs_ready(0), state.execution.device.stream));
             CUDA_CHECK(cudaSetDevice(tp->device->device));
             CUDA_CHECK(cudaStreamWaitEvent(tp->device->stream, tp->events->inputs_ready(0), 0));
-            // rank 1 用同一份 ingress 记录（DFlash2 的验证默认 greedy，不读 token_counts 指针）
-            CUDA_CHECK(cudaSetDevice(tp->device->device));
-            CUDA_CHECK(cudaMemcpyAsync(peer_frame.ingress.data, &state.host_ingress,
+            // Acceptance reads and updates penalty counters on both ranks, including greedy
+            // requests with nonzero penalties. Upload rank 1's own stable pinned record.
+            const auto* peer_ingress = state.execution.peer->dflash_host_ingress;
+            if (peer_ingress == nullptr) {
+                throw std::logic_error("tensor-parallel DFlash requires rank-local ingress");
+            }
+            CUDA_CHECK(cudaMemcpyAsync(peer_frame.ingress.data, peer_ingress,
                                        sizeof(qwen3_6::DFlashDecodeIngress),
                                        cudaMemcpyHostToDevice, tp->device->stream));
             // 草稿是 rank 0 那套模型算出来的（两卡位置/嵌入相同），所以按构造就是同一批提案
