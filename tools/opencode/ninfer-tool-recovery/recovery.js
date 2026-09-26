@@ -2,10 +2,18 @@ export const ORIGIN = 'local.ninfer-tool-recovery';
 export const supported = model => model?.providerID === 'ninfer' &&
   model.id === 'qwen3.8-27b-quasar-w4a4';
 const fresh = () => ({version: 1, used: 0, handled: null, blocked: false});
+const parseError = error => (error?.message ?? error?.data?.message ?? '')
+  .startsWith('tool_call_parse_error:');
+
+// A repeated identical request has no corrective context. Veto the built-in
+// transport retry only for this explicit error; the durable controller owns recovery.
+export function stopBlindRetry(event) {
+  if (supported(event.model) && parseError(event.error)) event.decision = {retry: false};
+}
 
 // Match the provider's explicit failure, never assistant text or reasoning.
 export const isToolParseError = message => message?.type === 'assistant' &&
-  !!message.error && /\btool_call_parse_error\b/.test(JSON.stringify(message.error)) &&
+  !!message.error && parseError(message.error) &&
   !(message.content ?? []).some(part => part.type === 'tool');
 
 export function createRecovery(ctx, {limit = 2, delayMs = 250, audit = async () => {}} = {}) {

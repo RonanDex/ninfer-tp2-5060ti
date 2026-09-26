@@ -6,7 +6,8 @@ location while its sessions are idle. The extension targets provider `ninfer`, m
 `qwen3.8-27b-quasar-w4a4`; it does not change inference settings or replace the Ollama
 length-continuation extension.
 
-After execution has failed, it checks the actual assistant error, sends a corrective synthetic
+The retry hook vetoes OpenCode's blind transport retries for this exact error (other failures keep
+their existing retry policy). After execution has failed, it checks the actual assistant error, sends a corrective synthetic
 prompt, and resumes. Each genuine prompt has a durable two-attempt budget shared across tool
 progress and extension reloads. A third matching error creates a visible non-resuming notice.
 Ordinary final answers, malformed examples in assistant text, unrelated provider errors, completed

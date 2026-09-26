@@ -1,9 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createRecovery, ORIGIN} from './recovery.js';
+import {createRecovery, ORIGIN, stopBlindRetry} from './recovery.js';
 
 const wait = () => new Promise(resolve => setTimeout(resolve, 30));
 const error = {name: 'APIError', data: {message: 'tool_call_parse_error: invalid tool call'}};
+
+test('retry hook vetoes blind retries only for the explicit NInfer parse error', () => {
+  const model = {providerID: 'ninfer', id: 'qwen3.8-27b-quasar-w4a4'};
+  const event = {model, error: {type: 'provider.internal', message: 'tool_call_parse_error: invalid'},
+    decision: {retry: true, delay: 1000}};
+  stopBlindRetry(event); assert.deepEqual(event.decision, {retry: false});
+  for (const other of [
+    {...event, model: {...model, providerID: 'other'}},
+    {...event, error: {message: 'connection refused'}},
+  ]) {
+    other.decision = {retry: true, delay: 1000}; stopBlindRetry(other);
+    assert.deepEqual(other.decision, {retry: true, delay: 1000});
+  }
+});
 function fixture(store = new Map()) {
   const info = {model: {providerID: 'ninfer', id: 'qwen3.8-27b-quasar-w4a4', variant: 'high'},
     location: {directory: '/test'}, outcome: 'failed'};

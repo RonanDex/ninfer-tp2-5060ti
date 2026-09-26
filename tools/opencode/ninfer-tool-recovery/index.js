@@ -1,7 +1,7 @@
 import {mkdir, writeFile, rename} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
-import {createRecovery} from './recovery.js';
+import {createRecovery, stopBlindRetry} from './recovery.js';
 
 export default {
   id: 'local.ninfer-tool-recovery',
@@ -16,6 +16,7 @@ export default {
     };
     const recovery = createRecovery(ctx, {audit});
     await ctx.session.hook('prompt', event => recovery.prompt(event));
+    await ctx.session.hook('retry', stopBlindRetry, {providerID: 'ninfer'});
     const controller = new AbortController();
     const reader = (async () => {
       for await (const event of ctx.event.subscribe({signal: controller.signal})) {
